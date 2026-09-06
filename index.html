@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Suman Singh — Reliable AI Systems</title>
+  <meta name="description" content="Suman Singh builds reliable AI systems: agent runtimes, secure execution, evaluation, retrieval, recovery, and production reliability." />
+  <meta name="theme-color" content="#f8fafc" />
+  <meta property="og:title" content="Suman Singh — Reliable AI Systems" />
+  <meta property="og:description" content="Building AI systems that survive production." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://sumansinghs71.github.io/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="#top"><span class="brand-mark">SS</span><span>Suman Singh</span></a>
+    <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false">☰</button>
+    <nav class="nav">
+      <a href="#work">Work</a><a href="#research">Research</a><a href="#days">100 Days</a><a href="#problems">Production Problems</a><a href="#writing">Writing</a><a href="#about">About</a>
+    </nav>
+    <div class="header-actions"><a class="icon-link" href="https://github.com/sumansinghs71" target="_blank" rel="noreferrer">GitHub</a><button class="theme-toggle" aria-label="Toggle dark mode">◐</button></div>
+  </header>
+
+  <main id="top">
+    <section class="hero section-shell">
+      <div class="hero-copy reveal">
+        <div class="eyebrow"><span class="live-dot"></span> AI systems · reliability · agent engineering</div>
+        <h1>Building AI systems<br /><span>that survive production.</span></h1>
+        <p class="hero-lede">I work on the systems around the model — execution, context, tools, retrieval, recovery, evaluation, security and distributed-system correctness.</p>
+        <div class="hero-actions"><a class="button primary" href="#work">Explore my work <span>↘</span></a><a class="button ghost" href="#days">100 Days of Reliable AI Agents</a></div>
+        <div class="hero-proof"><div><strong>310+</strong><span>runtime tests</span></div><div><strong>15/15</strong><span>sandbox attacks blocked</span></div><div><strong>96</strong><span>research episodes</span></div><div><strong>28</strong><span>idempotency tests</span></div></div>
+      </div>
+      <div class="hero-visual reveal delay-1">
+        <div class="sketch-note note-one">the model proposes ✍</div>
+        <div class="system-canvas">
+          <div class="system-node model">MODEL</div><div class="arrow down">↓</div><div class="system-node harness">AGENT HARNESS</div>
+          <div class="branch-grid"><div class="system-node mini">CONTEXT</div><div class="system-node mini">MEMORY</div><div class="system-node mini">TOOLS</div></div>
+          <div class="arrow down">↓</div><div class="system-node runtime">RUNTIME + POLICY</div><div class="arrow down">↓</div><div class="system-node production">PRODUCTION</div>
+          <div class="trace trace-a"></div><div class="trace trace-b"></div><div class="trace trace-c"></div>
+        </div>
+        <div class="sketch-note note-two">the runtime decides ✓</div>
+      </div>
+    </section>
+
+    <section class="marquee"><div class="marquee-track"><span>AGENT RUNTIMES</span><i>✦</i><span>RAG</span><i>✦</i><span>EVALS</span><i>✦</i><span>SECURE EXECUTION</span><i>✦</i><span>DURABLE WORKFLOWS</span><i>✦</i><span>OBSERVABILITY</span><i>✦</i><span>AGENT RUNTIMES</span><i>✦</i><span>RAG</span><i>✦</i><span>EVALS</span><i>✦</i><span>SECURE EXECUTION</span></div></section>
+
+    <section id="work" class="section-shell content-section">
+      <div class="section-heading reveal"><span class="kicker">01 / Selected Work</span><h2>Systems, not demos.</h2><p>Projects built around failure boundaries, reproducibility and precise guarantees.</p></div>
+      <div class="project-grid">
+        <article class="project-card featured reveal"><div class="project-visual runtime-lab"><div class="pv-chip">plan</div><span>→</span><div class="pv-chip">validate</div><span>→</span><div class="pv-chip">execute</div><div class="pv-line"></div><div class="pv-shield">✓</div></div><div class="project-body"><div class="project-meta"><span>Agent Runtime Lab</span><span>Featured</span></div><h3>What should happen between an LLM proposing an action and production executing it?</h3><p>Durable execution graphs, policy gates, sandboxed code, approvals, evaluations and observability — with controls tested by attack, not just configuration.</p><div class="tag-row"><span>Durable DAGs</span><span>Sandboxing</span><span>Policy</span><span>Evals</span></div><a class="text-link" href="https://github.com/sumansinghs71/agent-runtime-lab" target="_blank" rel="noreferrer">View repository ↗</a></div></article>
+        <article class="project-card reveal delay-1"><div class="project-visual reliability-lab"><div class="failure-dot f1"></div><div class="failure-dot f2"></div><div class="failure-dot f3"></div><div class="intervention">INTERVENE</div></div><div class="project-body"><div class="project-meta"><span>Agent Reliability Lab</span><span>Research</span></div><h3>Turning coordination failures into controlled experiments.</h3><p>Preregistered interventions, fixed seeds, deterministic detectors and reproducible evidence for multi-agent reliability research.</p><a class="text-link" href="https://github.com/sumansinghs71/agent-reliability-lab" target="_blank" rel="noreferrer">View repository ↗</a></div></article>
+        <article class="project-card reveal"><div class="project-visual idempotency"><div class="payment-pill">REQUEST</div><span>→</span><div class="payment-pill good">CHARGE ✓</div><span>→</span><div class="boom">💥</div><div class="recover">↺ recover without duplicate effect</div></div><div class="project-body"><div class="project-meta"><span>Idempotency Engine</span><span>Reliability</span></div><h3>The provider succeeded. Your process crashed. Now what?</h3><p>A recovery-point state machine that makes the failure boundary explicit instead of hiding behind “exactly once.”</p><a class="text-link" href="https://github.com/sumansinghs71/idempotency-engine" target="_blank" rel="noreferrer">Explore project ↗</a></div></article>
+        <article class="project-card reveal delay-1"><div class="project-visual workflow"><div class="screen-box">SCREEN</div><span>→</span><div class="screen-box">MODEL</div><span>→</span><div class="screen-box">SOP</div><span>→</span><div class="screen-box">AGENT</div></div><div class="project-body"><div class="project-meta"><span>Workflow-to-Agent</span><span>Automation</span></div><h3>From observed work to a governable agent procedure.</h3><p>Turn a screen recording into a process model, SOP and guarded agent flow with human review gates and deterministic adapters.</p><a class="text-link" href="https://github.com/sumansinghs71/workflow-to-agent" target="_blank" rel="noreferrer">Explore project ↗</a></div></article>
+      </div>
+    </section>
+
+    <section id="research" class="section-shell content-section split-section"><div class="section-heading reveal"><span class="kicker">02 / Research</span><h2>Measure the failure.<br />Then change one thing.</h2></div><div class="research-panel reveal delay-1"><div class="research-badge">DAI 2026 · under review</div><h3>From Taxonomy to Causality</h3><p>Controlled interventions for multi-agent coordination failures. The aim is not another list of failure types — it is to test what actually changes the outcome.</p><div class="research-flow"><span>observe</span><b>→</b><span>intervene</span><b>→</b><span>measure</span><b>→</b><span>reproduce</span></div><a class="text-link" href="https://github.com/sumansinghs71/agent-reliability-lab" target="_blank" rel="noreferrer">Research artifacts ↗</a></div></section>
+
+    <section id="days" class="days-section"><div class="section-shell"><div class="section-heading light reveal"><span class="kicker">03 / Visual Field Guide</span><h2>100 Days of Building<br />Reliable AI Agents</h2><p>From basic agent loops to recovery, evals, retrieval, security and production infrastructure — explained visually and in plain English.</p></div><div class="journey reveal"><div class="journey-line"></div><div class="journey-stop active"><span>01</span><b>Fundamentals</b></div><div class="journey-stop"><span>13</span><b>Safety</b></div><div class="journey-stop"><span>22</span><b>RAG</b></div><div class="journey-stop"><span>32</span><b>Tools</b></div><div class="journey-stop"><span>42</span><b>Orchestration</b></div><div class="journey-stop"><span>53</span><b>Evals</b></div><div class="journey-stop current"><span>65</span><b>Runtime</b></div><div class="journey-stop future"><span>100</span><b>Production</b></div></div><div class="day-preview-grid"><article class="day-preview reveal"><div class="day-number">53</div><div><span>Evals</span><h3>Why evals matter</h3><p>The regression that still looks reasonable.</p></div></article><article class="day-preview reveal delay-1"><div class="day-number">60</div><div><span>Agent DevOps</span><h3>Agent Optimization</h3><p>Turn production failures into tested improvements.</p></div></article><article class="day-preview reveal delay-2"><div class="day-number">65</div><div><span>Recovery</span><h3>Checkpoint, Resume & Replay</h3><p>Resume long-running work without repeating side effects.</p></div></article></div><div class="center-action"><a class="button inverted" href="#writing">Field guide is growing daily →</a></div></div></section>
+
+    <section id="problems" class="section-shell content-section"><div class="section-heading reveal"><span class="kicker">04 / Production Problems</span><h2>Start with what broke.</h2><p>No taxonomy required. Pick the failure you are seeing in production.</p></div><div class="problem-grid"><article class="problem-card reveal"><span class="problem-icon">↻</span><h3>Agent executed the action twice</h3><p>Retries crossed an external side-effect boundary.</p><small>Idempotency · receipts · durable state</small></article><article class="problem-card reveal delay-1"><span class="problem-icon">∞</span><h3>Agent will not stop</h3><p>The loop has activity, but no reliable definition of progress.</p><small>Budgets · stop conditions · verification</small></article><article class="problem-card reveal delay-2"><span class="problem-icon">◌</span><h3>Everything says SUCCESS. User still failed.</h3><p>Technical success and semantic success are not the same thing.</p><small>Outcome evals · traces · user goal</small></article><article class="problem-card reveal"><span class="problem-icon">⌁</span><h3>RAG retrieved the wrong evidence</h3><p>The model may be fine while retrieval quietly degrades.</p><small>Recall · reranking · grounding</small></article><article class="problem-card reveal delay-1"><span class="problem-icon">◷</span><h3>Background agent crashed after 3 hours</h3><p>Long-running autonomy needs recovery semantics, not just retries.</p><small>Checkpoint · resume · replay</small></article><article class="problem-card reveal delay-2"><span class="problem-icon">⚿</span><h3>Agent has too much authority</h3><p>A capable model with broad permissions increases blast radius.</p><small>Identity · policy · approval gates</small></article></div></section>
+
+    <section id="writing" class="section-shell content-section"><div class="section-heading reveal"><span class="kicker">05 / Writing</span><h2>Notes from building<br />around the model.</h2></div><div class="writing-list reveal delay-1"><article><span>Field note</span><h3>Why recovery is not the same as restart</h3><p>Long-running agents need to reconstruct what is still true before taking the next action.</p><b>Coming soon</b></article><article><span>Architecture</span><h3>The runtime is becoming the product</h3><p>Context, tools, state, policy, verification and recovery increasingly determine whether an agent is trustworthy.</p><b>Coming soon</b></article><article><span>Visual guide</span><h3>65 days of reliable agent engineering</h3><p>A visual map connecting fundamentals, security, RAG, tools, orchestration, evals and production runtime.</p><b>In progress</b></article></div></section>
+
+    <section id="about" class="about-section"><div class="section-shell about-grid"><div class="about-copy reveal"><span class="kicker">06 / About</span><h2>I care about what happens after the demo.</h2><p>I build and study reliable AI systems with a systems-engineering mindset: explicit failure boundaries, reproducible evidence, precise guarantees and production controls that can be tested.</p><p class="handwritten">The model proposes. The runtime decides.</p><div class="about-links"><a href="https://github.com/sumansinghs71" target="_blank" rel="noreferrer">GitHub ↗</a><a href="https://www.linkedin.com/" target="_blank" rel="noreferrer">LinkedIn ↗</a></div></div><div class="principles reveal delay-1"><div><span>01</span><h3>Controls proven by attack</h3><p>A policy is stronger when we can show it blocking a real failure.</p></div><div><span>02</span><h3>Negative controls</h3><p>A gate that has never been shown to fail is not yet evidence.</p></div><div><span>03</span><h3>Precise guarantees</h3><p>Say exactly what the system can guarantee — and where the boundary ends.</p></div></div></div></section>
+  </main>
+
+  <footer class="footer section-shell"><div><strong>Suman Singh</strong><span>Reliable AI systems · 2026</span></div><a href="#top">Back to top ↑</a></footer>
+  <script src="./script.js"></script>
+</body>
+</html>
