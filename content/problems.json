@@ -1,0 +1,206 @@
+[
+  {
+    "slug": "duplicate-action",
+    "icon": "\u21bb",
+    "title": "The agent executed the same action twice",
+    "summary": "The first action may have succeeded, but the agent retried because it never received or persisted the result.",
+    "symptoms": [
+      "A customer is charged twice.",
+      "The same email or ticket update appears twice.",
+      "The logs show a timeout followed by a retry, but not whether the first call succeeded."
+    ],
+    "why": "This usually starts as a normal reliability feature: retry when a network call fails. The problem is that a timeout does not mean the remote system failed. It only means your system did not receive a response in time. The provider may already have completed the action. If the worker crashes before saving that fact, a later retry can perform the side effect again.",
+    "example": "Imagine a payment agent sends a $75 refund. The payment provider applies it, but the connection drops before the response reaches your runtime. Your agent records 'tool failed' and retries. Without an idempotency key or action receipt, the provider sees a second legitimate refund request. From the model's point of view it retried a failed call. From the customer's point of view they were refunded twice.",
+    "wrong": [
+      "Treating every timeout as proof that nothing happened.",
+      "Adding generic retries around write tools without defining retry semantics.",
+      "Relying on the LLM to remember what it already did.",
+      "Calling a workflow 'exactly once' without naming the actual guarantee and failure boundary."
+    ],
+    "fix": [
+      "Use a stable idempotency key for each logical action, not each network attempt.",
+      "Persist action receipts: requested, accepted, completed, provider reference.",
+      "On resume, reconcile uncertain actions before retrying them.",
+      "Separate retryable reads from high-impact writes.",
+      "Test the ugly crash point: remote action succeeded, local commit did not."
+    ],
+    "watch": [
+      "duplicate action rate",
+      "unknown/ambiguous action states",
+      "provider reconciliation mismatches",
+      "retries by tool and error class"
+    ],
+    "related": [
+      45,
+      50,
+      64,
+      65
+    ],
+    "closing": "The useful question is not 'can we retry?' It is 'what evidence do we have that repeating this action is safe?'"
+  },
+  {
+    "slug": "stuck-loop",
+    "icon": "\u221e",
+    "title": "The agent is busy, but it is not making progress",
+    "summary": "A loop can look healthy\u2014model calls succeed, tools return 200\u2014while the task goes nowhere.",
+    "symptoms": [
+      "The same search or tool runs repeatedly.",
+      "Token cost rises while the user sees no new progress.",
+      "The agent keeps changing its plan but never reaches a verifiable outcome."
+    ],
+    "why": "Most agent loops are built around activity: reason, call a tool, observe, repeat. Activity is not progress. If the system has no machine-checkable definition of progress or completion, the model can keep finding plausible next steps forever. Tool errors, weak search results, or conflicting context make this worse because every failure gives the model another reason to try something slightly different.",
+    "example": "An incident agent is asked why checkout latency is high. It checks logs, then metrics, then logs again with a different query, then the same dashboard at a different time range. Every call succeeds. Twenty minutes later it has spent thousands of tokens but has not produced evidence strong enough to support or reject a hypothesis.",
+    "wrong": [
+      "Using only a maximum-step limit. It stops cost, but it does not define success.",
+      "Letting the model decide 'I am done' with no external check.",
+      "Treating every new tool call as progress.",
+      "Retrying the same weak strategy without changing information or constraints."
+    ],
+    "fix": [
+      "Define progress signals: new evidence, reduced candidate set, completed subtask, verified state change.",
+      "Track repeated tool+argument patterns and repeated hypotheses.",
+      "Use separate budgets for steps, time, tokens and expensive tools.",
+      "Add verifier checks for completion-critical tasks.",
+      "Escalate when the agent is active but progress has plateaued."
+    ],
+    "watch": [
+      "steps per successful task",
+      "repeat-call ratio",
+      "time since last progress signal",
+      "cost per completed outcome"
+    ],
+    "related": [
+      5,
+      9,
+      42,
+      51,
+      53
+    ],
+    "closing": "A production agent needs a definition of progress that exists outside the model's narration."
+  },
+  {
+    "slug": "wrong-rag-evidence",
+    "icon": "\u2301",
+    "title": "The answer looks fine, but RAG retrieved the wrong evidence",
+    "summary": "Generation can hide retrieval problems for a while, which makes this one of the quieter production failures.",
+    "symptoms": [
+      "Answers sound plausible but cite weak or irrelevant sources.",
+      "Quality drops only for certain products, tenants or document types.",
+      "A model upgrade appears to fix the problem temporarily even though retrieval did not improve."
+    ],
+    "why": "RAG is a pipeline. A document can be missing at ingestion, split badly, embedded poorly, filtered out, ranked too low, or pushed out of the final context. If you score only the final answer, a capable model may answer from prior knowledge and hide the retrieval regression. That creates a dangerous false sense of health.",
+    "example": "A policy agent is asked about a fee exception introduced last week. The latest policy was ingested, but metadata incorrectly labels it as region=US instead of GLOBAL. The EU query filters it out. The model still produces a reasonable answer from the older policy, and the final-answer evaluator gives partial credit. The actual failure is the metadata filter, not the model.",
+    "wrong": [
+      "Looking only at answer accuracy.",
+      "Increasing top-k when the right document is filtered out before ANN search.",
+      "Blaming embeddings before checking ingestion and metadata.",
+      "Assuming a citation is grounding without checking whether it supports the claim."
+    ],
+    "fix": [
+      "Trace source IDs from ingestion through retrieval, reranking and context assembly.",
+      "Maintain retrieval-specific evals such as recall@k and citation support.",
+      "Slice metrics by tenant, source, filter, language and document type.",
+      "Track source freshness and index lag.",
+      "Save failed-query candidates so engineers can inspect what the system actually saw."
+    ],
+    "watch": [
+      "retrieval recall@k",
+      "zero-result rate by filter",
+      "citation support rate",
+      "index freshness lag",
+      "reranker contribution"
+    ],
+    "related": [
+      22,
+      23,
+      28,
+      29,
+      30,
+      31,
+      57
+    ],
+    "closing": "A strong model can temporarily hide a weak retriever. Your observability should not let it."
+  },
+  {
+    "slug": "background-crash",
+    "icon": "\u25f7",
+    "title": "The background agent crashed after three hours",
+    "summary": "Long-running agents fail differently because the user, worker and environment may all change before the task finishes.",
+    "symptoms": [
+      "A job restarts from the beginning after a worker crash.",
+      "Completed side effects run again after resume.",
+      "The agent wakes up with expired credentials or assumptions that are no longer true."
+    ],
+    "why": "A chat request is short enough that process memory often feels like state. A background agent can run through deployments, worker restarts, credential expiry and external-system changes. If durable progress is not persisted outside the process, recovery becomes guesswork. Even with checkpoints, blindly resuming is unsafe because the world may have changed while the agent was down.",
+    "example": "An agent reviews 10,000 vendor records overnight. It has processed 7,200 when the worker is terminated during a deployment. On restart, the runtime reloads checkpoint 7,200. But record 7,200 also triggered an external update just before the crash. If the system cannot prove whether that update completed, simply continuing can duplicate the side effect.",
+    "wrong": [
+      "Keeping the whole task state in the worker process.",
+      "Checkpointing only model conversation history.",
+      "Assuming a saved step number proves side effects completed.",
+      "Reusing credentials and approvals that were valid hours ago."
+    ],
+    "fix": [
+      "Persist durable workflow state and checkpoint versions.",
+      "Use leases and heartbeats so only one worker owns a task at a time.",
+      "Record action receipts and reconcile uncertain external actions.",
+      "Revalidate permissions, time-sensitive data and external state after resume.",
+      "Support explicit cancel, timeout and partial-result semantics."
+    ],
+    "watch": [
+      "resume success rate",
+      "lost work after failure",
+      "duplicate effects after resume",
+      "stale credential failures",
+      "checkpoint age"
+    ],
+    "related": [
+      44,
+      46,
+      47,
+      64,
+      65
+    ],
+    "closing": "Recovery is not 'load state and continue.' Recovery is 'reconstruct what is still true, then continue safely.'"
+  },
+  {
+    "slug": "silent-success",
+    "icon": "\u25cc",
+    "title": "Everything says SUCCESS, but the user still failed",
+    "summary": "Infrastructure can be green while the actual business outcome is wrong.",
+    "symptoms": [
+      "HTTP requests succeed and traces have no errors, but users repeat the task manually.",
+      "Agent completion rate is high while support complaints rise.",
+      "The final message sounds confident but the requested state change never happened."
+    ],
+    "why": "Traditional monitoring answers operational questions: did the service respond, did the tool throw, did latency stay under the threshold? Agent systems need another layer: did the user's goal actually become true? The model can produce a polished final answer even when a tool returned partial data, an approval never completed, or the external state never changed.",
+    "example": "A travel agent says, 'Your reservation has been updated.' The airline API returned 200 for the request, so every technical dashboard is green. But the response body says `status=pending_manual_review`. The agent treated transport success as task success and told the user the job was done.",
+    "wrong": [
+      "Equating HTTP 200 with tool success.",
+      "Equating a model's 'done' message with workflow completion.",
+      "Measuring only latency, exceptions and token cost.",
+      "Using one global success metric for very different task types."
+    ],
+    "fix": [
+      "Define a semantic success condition for each important task.",
+      "Validate postconditions against the source of truth.",
+      "Separate accepted, processing and completed states.",
+      "Sample completed runs for human or deterministic verification.",
+      "Turn silent failures into permanent regression cases."
+    ],
+    "watch": [
+      "verified task success",
+      "user retry/reopen rate",
+      "postcondition mismatch rate",
+      "human disagreement with agent completion"
+    ],
+    "related": [
+      19,
+      44,
+      53,
+      56,
+      59,
+      63
+    ],
+    "closing": "The most dangerous failure is not an exception. It is a confident success message attached to an unchanged reality."
+  }
+]
