@@ -1,0 +1,264 @@
+[
+  {
+    "slug": "safety-is-architecture",
+    "label": "Safety & Security",
+    "title": "Safety is architecture, not a system prompt",
+    "desc": "Prompt injection, permissions, data boundaries, approvals, rollback and kill switches form one control system.",
+    "hero": 14,
+    "days": [
+      2,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      62
+    ],
+    "intro": "A safe agent is not a model that says the right things. It is a system that makes unsafe actions difficult to execute even when the model is confused, manipulated or simply wrong.",
+    "sections": [
+      [
+        "Start with the action, not the prompt",
+        "The most important question is not 'can someone jailbreak the model?' It is 'what can a bad or mistaken instruction cause the runtime to do?' A summarization error is annoying. A deletion, payment or data export is a different class of risk. That is why blast radius comes before model cleverness."
+      ],
+      [
+        "Separate decision from authority",
+        "The model can propose a tool, amount or target. The runtime should decide whether that action is allowed for this user, this task and this moment. Read, propose and execute are different capabilities. Keeping those capabilities separate makes both debugging and governance much clearer."
+      ],
+      [
+        "Approval is only one layer",
+        "Human review helps when judgment is genuinely needed, but it is not a replacement for authorization, validation or rollback. Approvals should bind to the exact action being reviewed, expire when important state changes, and sit inside a system that still enforces hard limits."
+      ],
+      [
+        "Design for the day the model is wrong",
+        "Production safety gets easier to reason about when you assume a bad decision will eventually happen. Then the architecture question becomes concrete: can we block it, limit it, detect it, undo it, and explain it afterward?"
+      ]
+    ],
+    "pattern": [
+      "Minimize capability",
+      "Validate outside the model",
+      "Re-check authorization at execution",
+      "Require risk-based approval",
+      "Record an audit trail",
+      "Support rollback or kill"
+    ],
+    "problems": [
+      "over-permissioned-agent",
+      "prompt-injection-tool-hijack",
+      "stale-approval",
+      "secret-in-trace"
+    ]
+  },
+  {
+    "slug": "rag-is-a-pipeline",
+    "label": "RAG & Knowledge",
+    "title": "RAG is a pipeline, not a vector database",
+    "desc": "The final answer can fail because of ingestion, chunking, metadata, retrieval, reranking, freshness or grounding.",
+    "hero": 31,
+    "days": [
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      57
+    ],
+    "intro": "When a RAG answer is wrong, blaming the model is often the fastest way to waste a day. The answer is the last step in a chain, and each earlier step can remove or distort the evidence before the model ever sees it.",
+    "sections": [
+      [
+        "Ask what evidence reached the model",
+        "A good debugging trace should let you follow a source from ingestion to chunking, indexing, filtering, retrieval, reranking and final context. If the right document disappeared at metadata filtering, changing the prompt cannot fix it."
+      ],
+      [
+        "Final-answer quality can hide retrieval failure",
+        "Strong models can answer from prior knowledge or infer around weak context. That feels helpful until the domain changes and prior knowledge is stale. Retrieval-specific evals matter because they catch problems the final-answer score can hide."
+      ],
+      [
+        "Freshness has multiple clocks",
+        "The source can be updated while ingestion, embeddings, replicas or caches are still old. A single 'last sync succeeded' metric is not enough. What matters is the age and version of the evidence that actually reached the model."
+      ],
+      [
+        "Evaluate claims against sources",
+        "A citation is not automatically grounding. The cited source must support the specific claim. In production, citation correctness, source trust and retrieval recall belong beside answer quality—not underneath it."
+      ]
+    ],
+    "pattern": [
+      "Trace source IDs end to end",
+      "Measure recall@k and reranker contribution",
+      "Slice by filters and document type",
+      "Track source-to-context freshness",
+      "Check citation support"
+    ],
+    "problems": [
+      "wrong-rag-evidence",
+      "stale-knowledge"
+    ]
+  },
+  {
+    "slug": "long-running-agents-are-operations",
+    "label": "Runtime & Reliability",
+    "title": "Long-running agents are operations systems",
+    "desc": "Once work outlives the browser session, durability, ownership, credentials, checkpoints and replay safety become the architecture.",
+    "hero": 65,
+    "days": [
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      64,
+      65
+    ],
+    "intro": "A five-second chatbot request can pretend process memory is state. A five-hour agent cannot. Deployments happen, workers die, credentials expire, approvals age and external systems change while the task is still alive.",
+    "sections": [
+      [
+        "Persist progress outside the worker",
+        "If a new worker cannot reconstruct the task, you do not have durable execution. Conversation history alone is not enough. The runtime needs explicit workflow state, ownership, versions and durable records of external effects."
+      ],
+      [
+        "Resume is not replay",
+        "Loading checkpoint 7,200 tells you where the agent thought it was. It does not tell you whether the last payment, email or API update completed before the crash. Recovery has to reconcile uncertain side effects before continuing."
+      ],
+      [
+        "The world may change while the agent sleeps",
+        "Permissions can expire. A price can change. An approval can become stale. A resource can be deleted. On resume, the runtime should revalidate the assumptions that matter instead of blindly restoring a frozen mental state."
+      ],
+      [
+        "Ownership needs leases and cancellation",
+        "Background work needs an owner even when no user is watching. Leases, heartbeats, cancellation, timeouts and partial results are normal distributed-systems concerns—and they become agent concerns as soon as tasks become long lived."
+      ]
+    ],
+    "pattern": [
+      "Durable workflow state",
+      "Leases + heartbeats",
+      "Action receipts",
+      "Idempotent side effects",
+      "Checkpoint versions",
+      "Revalidate before resume",
+      "Cancel + timeout semantics"
+    ],
+    "problems": [
+      "background-crash",
+      "duplicate-action",
+      "stale-approval",
+      "queue-backpressure"
+    ]
+  },
+  {
+    "slug": "runtime-is-the-product",
+    "label": "Modern Agent Runtime",
+    "title": "The runtime is becoming the product",
+    "desc": "Model quality matters, but production behavior increasingly comes from the harness around it: policy, state, tools, evidence, recovery and control.",
+    "hero": 63,
+    "days": [
+      6,
+      14,
+      19,
+      44,
+      53,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65
+    ],
+    "intro": "Two teams can use the same model and build very different systems. The difference is usually not another clever prompt. It is what surrounds the model: which context it gets, what it can execute, how state survives, what gets verified and how failures are recovered.",
+    "sections": [
+      [
+        "The model proposes",
+        "A model output is a proposal: a tool name, arguments, a plan or a piece of code. Treating that proposal as an instruction to production collapses reasoning and authority into one layer. A stronger runtime validates and mediates the proposal."
+      ],
+      [
+        "The harness creates repeatable behavior",
+        "Prompts alone are difficult to govern at scale. Typed tools, policy checks, state machines, sandbox boundaries, budgets, retries and verifiers make behavior more predictable because they turn fuzzy intentions into explicit system rules."
+      ],
+      [
+        "Agents need to read their environment",
+        "A production agent should be able to inspect the evidence it needs—logs, traces, tool outcomes and relevant runtime state—without receiving unrestricted access to everything. Better observability can improve both human diagnosis and agent self-correction."
+      ],
+      [
+        "Control moves above individual agents",
+        "Once you run many agents, identity, budgets, versions, policies, kill switches and fleet-wide visibility become a control-plane problem. That is the point where 'an agent feature' becomes platform infrastructure."
+      ]
+    ],
+    "pattern": [
+      "Validated plans",
+      "Typed tools",
+      "Policy at execution",
+      "Durable state",
+      "Sandboxed code",
+      "Evidence + traces",
+      "Budgets + kill switches",
+      "Fleet control"
+    ],
+    "problems": [
+      "over-permissioned-agent",
+      "tool-contract-drift",
+      "silent-success",
+      "background-crash"
+    ]
+  },
+  {
+    "slug": "production-failures-become-evals",
+    "label": "Evals & Agent DevOps",
+    "title": "Every useful production failure should become an eval",
+    "desc": "The best regression set is not invented once. It grows from the failures your real system actually produces.",
+    "hero": 60,
+    "days": [
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      63
+    ],
+    "intro": "Evals become much more valuable when they are connected to operations. A production failure is evidence that your current test set did not protect a behavior that matters. The next release should not be able to rediscover the same failure for free.",
+    "sections": [
+      [
+        "Capture the failure before fixing it",
+        "Save the input, relevant context, tool trajectory, source versions, runtime configuration and expected outcome. If the only artifact is a screenshot of the wrong answer, the team will struggle to reproduce the bug after the environment changes."
+      ],
+      [
+        "Turn the incident into a regression case",
+        "The smallest useful eval reproduces the behavior that should not return. That might be a deterministic tool check, a retrieval recall test, a safety scenario or a human-reviewed outcome. Not every problem needs an LLM judge."
+      ],
+      [
+        "Test the fix against more than one case",
+        "A prompt tweak can repair the incident and quietly damage another slice. Run the candidate fix against the golden set, related failure clusters and negative controls before calling it an improvement."
+      ],
+      [
+        "Close the loop in production",
+        "After deployment, monitor the same signal that originally exposed the failure. An offline pass is evidence, not proof. The real loop is production → failure → eval → fix → release → production verification."
+      ]
+    ],
+    "pattern": [
+      "Capture trace + versions",
+      "Cluster similar failures",
+      "Add permanent regression case",
+      "Evaluate candidate fix",
+      "Canary release",
+      "Verify production signal"
+    ],
+    "problems": [
+      "silent-success",
+      "wrong-rag-evidence",
+      "model-upgrade-regression",
+      "prompt-injection-tool-hijack"
+    ]
+  }
+]
