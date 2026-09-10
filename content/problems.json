@@ -2,575 +2,763 @@
   {
     "slug": "stuck-loop",
     "icon": "∞",
-    "category": "Reliability & Runtime",
+    "category": "Runtime & Sandbox",
     "title": "The LLM stopped calling. The tool never did.",
-    "summary": "Model-call limits can stop an agent loop, but they do not stop generated code or a tool process that loops forever inside a sandbox.",
+    "summary": "Model-call limits protect the outer agent loop. They do not stop code that is already running forever inside a sandbox.",
     "symptoms": [
-      "The orchestration layer shows one tool call in-flight for minutes while the LLM call count stays below its configured limit.",
-      "The sandbox consumes CPU or memory continuously, but no new model or tool invocation is recorded.",
-      "The user cancels the task, yet the child process continues running until the worker or container is killed."
+      "One tool invocation stays in-flight while the LLM-call counter stops moving.",
+      "Sandbox CPU, memory, process count or output keeps growing.",
+      "User cancellation returns, but the tool process or its children keep running."
     ],
-    "failure_boundary": "The dangerous boundary is the hand-off from the agent runtime to executable code. Before the call, the orchestrator owns termination. After the call starts, a model-step limit is irrelevant unless a separate sandbox supervisor can independently stop the process.",
-    "why": "Teams often protect the outer loop with max model calls, max agent steps, token budgets or API-level limits. Those controls help when the model repeatedly invokes tools. They do not help when a single invocation starts code containing an infinite loop, deadlock, blocking network call, runaway recursion, child-process storm or unbounded output. From the orchestrator's point of view there may be only one perfectly valid tool call that never returns.",
-    "example": "A code-execution tool receives generated Python that retries an empty work queue with `while True`. The agent made only one tool call, so its 20-call budget never moves. The sandbox process keeps one CPU core busy for an hour. A model-side stop condition cannot see or terminate the loop because execution has already crossed into a different process boundary.",
+    "failure_boundary": "The hand-off from orchestrator → executable process. Once code is running, model-step limits no longer own termination.",
+    "why": "Agent runtimes usually cap model turns, tokens or tool calls. Those controls help when the model repeatedly asks for more work. A single tool call is different: generated code can deadlock, recurse, block on I/O, spawn children, flood stdout or loop forever without making another LLM request.",
+    "example": "A code tool runs generated Python containing a retry loop with no terminal condition. The agent has a 20-call budget, but it used only one call. The sandbox burns a CPU core for an hour because the component that owns the LLM budget is not the component that owns the process.",
     "fooled": [
-      "Relying on a maximum number of LLM calls or agent steps as the primary loop control.",
-      "Assuming an HTTP 4xx/5xx limit from the model gateway protects code that is already running.",
-      "Sending a cancellation flag to the model while leaving the sandbox process tree alive.",
-      "Using a cooperative timeout inside generated code as the only termination mechanism."
+      "“max agent steps = 20”",
+      "cooperative timeout inside generated code",
+      "cancelling the model request but not the process tree"
     ],
     "prevent": [
-      "Run generated or untrusted code in a separate process/container, never in the agent worker process.",
-      "Enforce an external wall-clock TTL per tool invocation and an overall task deadline.",
-      "Apply CPU-time, memory, PID/thread, file-descriptor, disk, output-byte and network-request limits at the sandbox boundary.",
-      "Prefer narrow deterministic tools over arbitrary code execution when the task does not require a general sandbox.",
-      "Pass cancellation/deadline context to well-behaved tools, but treat it as an optimization rather than the hard safety boundary."
+      "Run executable code in a separate process/container with an external supervisor.",
+      "Enforce per-invocation wall-clock TTL plus overall task deadline.",
+      "Apply CPU, memory, PID/thread, file-descriptor, disk, output and network budgets at the sandbox boundary.",
+      "Prefer narrow typed tools when arbitrary code execution is not required."
     ],
     "detect": [
-      "Track wall-clock duration and CPU seconds for every in-flight tool invocation.",
-      "Require heartbeat or progress events for long-running tools and alert on progress silence.",
-      "Watch sandbox RSS, process count, output growth and child-process tree—not only LLM request count.",
-      "Record the code/tool hash so repeated hangs from the same artifact can be quarantined."
+      "Emit heartbeat/progress events for long-running tools and alert on progress silence.",
+      "Track wall time and CPU time per invocation, not only model/tool-call counts.",
+      "Record code/tool hash and process-tree metadata so repeated hangs can be quarantined."
     ],
     "recover": [
-      "On deadline: send graceful termination, wait a short bounded grace period, then kill the entire process group/container.",
-      "Destroy the sandbox after a hard timeout rather than returning it to the pool in an unknown state.",
-      "Mark the workflow as TOOL_TIMEOUT or TOOL_KILLED instead of pretending the tool returned a normal error.",
-      "Before retrying a timed-out write-capable tool, reconcile whether an external side effect happened.",
-      "Cap retries and escalate or quarantine repeated executions of the same failing code."
+      "TERM → bounded grace period → KILL the entire process group/container.",
+      "Destroy a hard-timed-out sandbox instead of returning it to the pool.",
+      "Return an explicit TOOL_TIMEOUT/TOOL_KILLED state; never disguise it as a normal tool response."
     ],
     "test": [
-      "A tight `while True` CPU loop.",
-      "Infinite recursion or uncontrolled memory growth.",
-      "A sleeping or blocked network call that never returns.",
-      "Unbounded stdout/log generation.",
-      "A child-process storm.",
-      "A tool that commits an external side effect and then hangs before returning."
+      "tight CPU loop",
+      "blocked network call",
+      "unbounded stdout",
+      "child-process storm",
+      "side effect commits, then tool hangs"
     ],
     "watch": [
       "tool wall-clock p95/p99",
-      "CPU seconds per invocation",
-      "progress-heartbeat age",
-      "forced sandbox kills",
-      "timeouts retried after possible side effects",
-      "repeat hangs by code/tool hash"
+      "CPU seconds / invocation",
+      "heartbeat age",
+      "forced kills",
+      "RSS / PID growth",
+      "timeouts after possible writes"
     ],
     "invariant": "Every tool invocation has an owner outside the tool that can terminate its full process tree within a bounded time.",
-    "closing": "An agent-step limit controls the agent. A sandbox deadline controls the code. Production systems need both."
+    "closing": "An agent-step limit controls the agent. A sandbox deadline controls the code. Production needs both.",
+    "group": "Execution",
+    "tags": [
+      "TTL",
+      "cgroups",
+      "watchdog"
+    ],
+    "first_five": [
+      "Find the sandbox/container and current process tree.",
+      "Check wall-clock age, CPU time, RSS, output bytes and last progress heartbeat.",
+      "Terminate through the supervisor; if the tool can write externally, reconcile side effects before retry."
+    ],
+    "flow": [
+      "LLM",
+      "tool call #1",
+      "sandbox",
+      "while (true)"
+    ],
+    "flow_caption": "Outer loop: 1 call. Inner execution: unbounded."
   },
   {
     "slug": "regional-inference-failure",
     "icon": "◫",
-    "category": "Reliability & Runtime",
+    "category": "Inference Routing",
     "title": "One inference region failed. Traffic kept going there.",
-    "summary": "A multi-region model deployment is not resilient if the router keeps sending requests to an unhealthy endpoint.",
+    "summary": "Multi-region inventory is not resilience if the router cannot eject an unhealthy model endpoint.",
     "symptoms": [
-      "Only a portion of model requests return 5xx or timeout errors.",
-      "Healthy regions still have capacity, but user failures continue.",
-      "Removing one endpoint from routing immediately improves success rate."
+      "A fixed fraction of requests return 5xx/timeouts.",
+      "Other regions remain healthy and have spare capacity.",
+      "Removing one endpoint from the pool immediately improves success rate."
     ],
-    "failure_boundary": "The model may be healthy in five regions and broken in one; the failure becomes product-wide only when routing cannot distinguish those states quickly enough.",
-    "why": "Static round-robin pools spread traffic, but they also spread regional failures. Model gateways need active health, failure-rate windows and enough spare capacity to eject a bad region without overloading the survivors.",
-    "example": "An AI service uses six inference regions. One region starts returning 503s after a provider-side routing change. Five regions remain healthy, yet one-sixth of traffic continues failing because the endpoint stays in the pool until someone changes configuration manually.",
+    "failure_boundary": "The routing layer fails to translate per-region health into traffic decisions quickly enough.",
+    "why": "Static round-robin spreads healthy traffic and unhealthy traffic equally. A resilient model gateway needs region-level health, bounded retries, endpoint ejection and enough headroom for the surviving regions.",
+    "example": "A six-region inference pool loses one region after a provider-side change. Five regions are healthy, but roughly one-sixth of requests continue failing because the router keeps treating every endpoint as equal.",
     "fooled": [
-      "Calling a deployment 'multi-region' without testing regional evacuation.",
-      "Using DNS reachability as the only health signal.",
-      "Immediately returning a recovered region to full traffic.",
-      "Running every healthy region near capacity, leaving no room for failover."
+      "“we are multi-region”",
+      "health checks that prove only DNS/TCP reachability",
+      "all regions running near saturation"
     ],
     "prevent": [
-      "Route through a model gateway with per-region health state and endpoint ejection.",
-      "Reserve failover headroom instead of operating every region at saturation.",
-      "Use region-specific circuit breakers and bounded retry policies.",
-      "Keep provider and deployment configuration versioned and centrally observable."
+      "Use active inference probes plus rolling failure/latency health per region.",
+      "Reserve failover headroom and enforce per-region circuit breakers.",
+      "Classify retryable failures and cap the retry budget.",
+      "Version routing configuration and use controlled re-entry after recovery."
     ],
     "detect": [
-      "Break down success rate, 5xx, latency and throttling by region/deployment.",
-      "Run synthetic inference probes independent of user traffic.",
-      "Compare router decisions with endpoint health and capacity."
+      "Dashboard success, latency, throttling and saturation by endpoint.",
+      "Compare router decisions with endpoint-health state.",
+      "Probe independently of user traffic so a quiet region can still be declared unhealthy."
     ],
     "recover": [
-      "Eject the unhealthy region automatically after a bounded failure threshold.",
-      "Shift traffic only to regions with confirmed capacity.",
-      "Reintroduce the region gradually with canary traffic after recovery."
+      "Automatically eject after a bounded unhealthy threshold.",
+      "Shift only to regions with confirmed headroom.",
+      "Reintroduce with canary traffic, then ramp."
     ],
     "test": [
-      "Force one region to return 503 while production-like traffic is flowing.",
-      "Simulate one slow region rather than a clean outage.",
-      "Recover the region and verify controlled re-entry rather than an immediate traffic flood."
+      "hard 503 in one region",
+      "slow region / tail-latency failure",
+      "region recovery and re-entry",
+      "failover while survivors are near capacity"
     ],
     "watch": [
-      "success rate by region",
-      "endpoint ejections",
-      "healthy capacity headroom",
-      "retry amplification",
-      "regional re-entry failures"
+      "success by region",
+      "ejection count",
+      "capacity headroom",
+      "retry rate",
+      "re-entry failures"
     ],
-    "invariant": "Loss of one inference region must not become loss of the AI product when healthy capacity still exists.",
-    "closing": "Redundancy is inventory. Resilience is the ability to stop sending work to the broken copy."
+    "invariant": "If healthy serving capacity still exists, loss of one region must not become loss of the product.",
+    "closing": "Redundancy is inventory. Resilience is routing away from the broken copy.",
+    "group": "Inference",
+    "tags": [
+      "health",
+      "ejection",
+      "headroom"
+    ],
+    "first_five": [
+      "Break errors down by region/deployment rather than global averages.",
+      "Eject the bad endpoint and verify remaining capacity before shifting traffic.",
+      "Watch retry amplification and queue growth after the shift."
+    ],
+    "flow": [
+      "router",
+      "region A ✓",
+      "region B 503",
+      "region C ✓"
+    ],
+    "flow_caption": "Redundancy exists; failure isolation does not."
   },
   {
     "slug": "model-control-plane-drift",
     "icon": "404",
-    "category": "Model & Control Plane",
-    "title": "The model existed in config. The provider said 404.",
-    "summary": "Your control plane can say a deployment is active after the provider has removed, renamed or retired the actual serving resource.",
+    "category": "Model Control Plane",
+    "title": "Config said the model existed. The provider said 404.",
+    "summary": "Your model catalog can stay green after the actual serving deployment has been removed, renamed or retired.",
     "symptoms": [
-      "Agents repeatedly request a model deployment that no longer exists.",
-      "Database or configuration records still show the model as enabled.",
-      "The failure persists across application restarts because the wrong state is durable."
+      "A deterministic model-not-found error repeats across retries.",
+      "Internal config/database still marks the deployment active.",
+      "Restarts do nothing because the bad reference is durable."
     ],
-    "failure_boundary": "Two control planes disagree: your catalog says 'available' while the provider's serving plane says 'not found'. The application cannot repair that contradiction with retries.",
-    "why": "Model catalogs are often copied into databases, feature flags and agent configuration. Provider-side changes happen independently. Without reconciliation, stale control-plane state can outlive the deployment it references.",
-    "example": "A team removes an old dedicated model deployment during a migration, but several agents still reference its deployment key in durable configuration. Every request gets a deterministic 404. Retries increase load but cannot recreate a resource that no longer exists.",
+    "failure_boundary": "Internal control-plane truth diverges from provider serving-plane truth.",
+    "why": "Model IDs are copied into catalogs, agent records, feature flags and deployment manifests. Provider inventory changes independently. Without reconciliation, stale references can outlive the resource they point to.",
+    "example": "A dedicated deployment is removed during migration, but active agents still reference its old deployment key. Every call fails deterministically; retries only generate more identical 404s.",
     "fooled": [
-      "Retrying a deterministic 'deployment not found' error.",
-      "Validating model configuration only when an agent is created.",
-      "Treating database state as the source of truth for provider inventory.",
-      "Deleting an old deployment before proving zero active references."
+      "retrying a deterministic not-found",
+      "validating only at agent creation time",
+      "deleting before proving zero live references"
     ],
     "prevent": [
-      "Maintain a reconciler between internal model catalog state and provider inventory.",
-      "Block deletion/retirement while active references remain.",
-      "Validate deployment existence during release and agent activation.",
-      "Use staged deprecation: announce, migrate, drain, verify, then remove."
+      "Run a reconciler between internal model catalog and provider inventory.",
+      "Block retirement while active references remain.",
+      "Preflight deployment existence during release and agent activation.",
+      "Use staged retirement: announce → migrate → drain → verify → remove."
     ],
     "detect": [
-      "Alert on deterministic model-not-found errors separately from transient failures.",
-      "Continuously compare configured deployment IDs with provider inventory.",
-      "Track active agents by deployment/version before migration."
+      "Alert separately on model/deployment-not-found.",
+      "Continuously report configured-vs-serving drift.",
+      "Track live consumers per model/deployment version."
     ],
     "recover": [
-      "Stop retrying the missing deployment.",
-      "Route to a pre-validated compatible deployment when policy allows.",
-      "Repair the control-plane reference and verify all consumers converge."
+      "Stop retrying the missing target.",
+      "Route to a pre-validated compatible target when policy permits.",
+      "Repair config and verify all consumers converge."
     ],
     "test": [
-      "Remove a test deployment while references still exist and verify the reconciler catches it.",
-      "Rename/version a deployment and confirm pre-release validation blocks stale references.",
-      "Exercise rollback to the previous valid deployment mapping."
+      "remove a referenced test deployment",
+      "rename/version a target",
+      "rollback model mapping",
+      "retirement with hidden live consumer"
     ],
     "watch": [
-      "configured-vs-provider drift",
-      "model-not-found errors",
-      "active references per deployment",
+      "catalog/provider drift",
+      "404 rate",
+      "live references",
       "retirement blockers",
       "fallback activation"
     ],
-    "invariant": "Every enabled model reference must resolve to a serving deployment that the runtime can actually call.",
-    "closing": "A model name in a database is not a serving model. Reconcile control-plane truth with provider truth."
+    "invariant": "Every enabled model reference resolves to a serving deployment that the runtime can actually call.",
+    "closing": "A model name in a database is not a serving model.",
+    "group": "Inference",
+    "tags": [
+      "reconcile",
+      "preflight",
+      "retirement"
+    ],
+    "first_five": [
+      "Classify the error as deterministic, not transient.",
+      "Compare the referenced deployment ID with live provider inventory.",
+      "Stop retries, choose a validated target, then repair the durable reference."
+    ],
+    "flow": [
+      "agent config",
+      "catalog: ACTIVE",
+      "provider",
+      "deployment: 404"
+    ],
+    "flow_caption": "Two control planes, two different realities."
   },
   {
     "slug": "capacity-without-fallback",
     "icon": "↘",
-    "category": "Model & Control Plane",
+    "category": "Inference Capacity",
     "title": "The primary model hit capacity. The workflow had nowhere to go.",
-    "summary": "Token, concurrency or quota pressure becomes a business outage when no degraded mode or validated fallback path exists.",
+    "summary": "Quota and concurrency limits are normal. An outage happens when the system has no bounded degraded mode.",
     "symptoms": [
-      "Error rate rises sharply only during traffic spikes.",
-      "Requests exceed model concurrency, token or throughput limits.",
-      "Work falls back to manual handling because every overload request fails outright."
+      "Failures rise only during traffic spikes.",
+      "Concurrency/token throughput reaches a provider or deployment limit.",
+      "Retries and backlog grow together."
     ],
-    "failure_boundary": "Capacity failure is expected behavior from a bounded provider. The architectural failure is having only one admissible execution path when that bound is reached.",
-    "why": "Inference capacity is not infinitely elastic. Dedicated capacity, shared quotas and model-specific limits can all saturate. Blind retries make pressure worse. Fallback must be designed before the incident—and validated because another model may behave differently.",
-    "example": "An AI processing service normally uses a preferred high-capability model. A morning spike exceeds its concurrency allowance. With no admission control or compatible fallback, every excess request fails and a backlog forms faster than humans can absorb it.",
+    "failure_boundary": "A bounded inference tier reaches capacity, but the runtime has only one admissible execution path.",
+    "why": "Inference capacity is finite even when APIs feel elastic. Blind retries amplify pressure. A fallback model also changes behavior, so failover is safe only when the alternate path has workflow-specific eval coverage.",
+    "example": "A morning burst exceeds the preferred model's concurrency allowance. Without admission control or a validated fallback, excess requests fail, retries multiply, and a queue grows faster than it can drain.",
     "fooled": [
-      "Treating overload as a transient error and immediately retrying.",
-      "Assuming a smaller model is automatically behaviorally compatible.",
-      "Failing open into an unlimited queue with no age or capacity policy.",
-      "Testing fallback only for response syntax, not task correctness."
+      "immediate retries on throttling",
+      "assuming a smaller model is behaviorally equivalent",
+      "an unbounded queue called 'graceful degradation'"
     ],
     "prevent": [
-      "Use admission control and explicit per-model concurrency/token budgets.",
-      "Pre-register fallback models and validate them on workflow-specific evals.",
-      "Define degraded modes: lower-cost model, reduced context, read-only mode, queued execution or human path.",
-      "Keep queue size/age bounded and expose backpressure upstream."
+      "Set explicit per-model concurrency/token budgets and priority classes.",
+      "Validate fallback models on workflow-specific golden/eval slices.",
+      "Bound queue size and queue age; propagate backpressure upstream.",
+      "Define degraded modes: lower-cost model, reduced scope, queued execution or human path."
     ],
     "detect": [
-      "Track quota utilization, concurrency, token throughput, throttling and queue age.",
-      "Distinguish provider overload from application bugs.",
-      "Measure quality and tool-choice drift when fallback activates."
+      "Track capacity utilization, throttle rate, queue age and retry volume.",
+      "Measure quality/tool-choice drift during fallback.",
+      "Separate overload from provider faults and application faults."
     ],
     "recover": [
-      "Shed or defer low-priority work before critical work.",
-      "Route eligible tasks to validated fallback capacity.",
-      "Drain backlog at a controlled rate after capacity returns."
+      "Shed/defer low-priority work first.",
+      "Route eligible work to validated capacity.",
+      "Drain backlog gradually after recovery."
     ],
     "test": [
-      "Artificially lower primary-model capacity and verify automatic degradation.",
-      "Run the same golden workflow suite on every fallback model.",
-      "Test recovery while a backlog already exists."
+      "lower primary capacity artificially",
+      "fallback model regression suite",
+      "backlog present during recovery",
+      "fallback itself reaches capacity"
     ],
     "watch": [
       "capacity utilization",
-      "throttle rate",
+      "throttles",
       "fallback rate",
       "queue age",
-      "quality delta on fallback",
-      "manual spillover"
+      "fallback quality delta"
     ],
-    "invariant": "A bounded model tier must produce a bounded, intentional degraded mode—not an uncontrolled outage.",
-    "closing": "Fallback is not a model name in config. It is a tested alternate operating mode."
+    "invariant": "Capacity exhaustion produces a bounded, intentional degraded mode—not an uncontrolled retry cascade.",
+    "closing": "Fallback is not a model name in config. It is a tested operating mode.",
+    "group": "Inference",
+    "tags": [
+      "admission",
+      "fallback",
+      "backpressure"
+    ],
+    "first_five": [
+      "Confirm saturation vs application error using capacity telemetry.",
+      "Stop retry amplification and protect critical traffic with admission control.",
+      "Activate only a pre-tested fallback/degraded mode."
+    ],
+    "flow": [
+      "requests",
+      "primary SATURATED",
+      "admission",
+      "fallback / queue"
+    ],
+    "flow_caption": "Overload must become a policy decision, not a retry storm."
   },
   {
     "slug": "session-state-loss",
     "icon": "↔",
-    "category": "Reliability & Runtime",
-    "title": "The next message landed on another worker—and the conversation disappeared.",
-    "summary": "Session affinity can hide state design problems until traffic crosses workers, zones or regions.",
+    "category": "State & Routing",
+    "title": "The next message hit another worker—and the conversation disappeared.",
+    "summary": "Session affinity can hide a state-design bug until autoscaling, failover or cross-zone routing moves the next turn.",
     "symptoms": [
-      "Follow-up questions are treated as new conversations.",
-      "The issue appears intermittently or only after scaling/failover.",
-      "A single-node environment works perfectly while multi-node production loses context."
+      "Follow-up questions look like brand-new conversations.",
+      "The bug is intermittent and worse after scaling or failover.",
+      "Single-node tests pass; multi-replica production fails."
     ],
-    "failure_boundary": "If conversation correctness depends on process-local memory, any routing change becomes a semantic failure.",
-    "why": "Sticky sessions can keep requests on one worker, but they are not durable state. Workers restart, regions fail and autoscaling moves traffic. Sequence numbers, conversation state and control flags need a shared source of truth if the workflow requires continuity.",
-    "example": "A user asks a follow-up question. The load balancer sends it to a different data centre whose worker has no in-memory history for that conversation. The model receives a valid request—but without the prior turns needed to interpret it.",
+    "failure_boundary": "Correctness depends on process-local state that is not reconstructable on another healthy worker.",
+    "why": "Sticky sessions improve locality, but they are not durable state. Workers restart and requests move. Conversation history, sequence/version and workflow control state need a shared source of truth when continuity matters.",
+    "example": "Turn one lands on worker A and stores context only in memory. Turn two lands on worker B after a routing change. The request is valid, but the model lacks the prior state needed to interpret it.",
     "fooled": [
-      "Using stickiness as the only persistence mechanism.",
-      "Assuming conversation ID alone means the state exists everywhere.",
-      "Failing to version or sequence messages.",
-      "Testing only on one replica."
+      "using stickiness as persistence",
+      "conversation ID without version/state guarantees",
+      "testing on one replica"
     ],
     "prevent": [
       "Persist canonical conversation/workflow state outside the worker.",
-      "Use session affinity only as a latency optimization.",
-      "Carry a stable conversation ID plus monotonic sequence/version.",
-      "Make state reconstruction deterministic across workers and regions."
+      "Use affinity only as a locality optimization.",
+      "Carry stable conversation ID plus monotonic sequence/version.",
+      "Use optimistic concurrency or equivalent protection against stale overwrites."
     ],
     "detect": [
-      "Log routing target, conversation version and state source for every turn.",
-      "Alert on sequence gaps, missing context and unexpected new-session creation.",
-      "Compare same-session requests across replicas."
+      "Log worker/region, state source and version for every turn.",
+      "Alert on context misses, sequence gaps and unexpected session resets.",
+      "Trace cross-worker state reconstruction latency."
     ],
     "recover": [
-      "Reload the latest durable state on a routing miss.",
-      "Reject or reconcile stale/out-of-order updates rather than silently overwriting newer state.",
+      "Reload latest durable state on routing miss.",
+      "Reject or reconcile stale/out-of-order updates.",
       "Rebuild transient caches from durable history."
     ],
     "test": [
-      "Force every consecutive turn onto a different worker.",
-      "Restart the worker between two turns.",
-      "Replay out-of-order and duplicate messages.",
-      "Fail over between regions mid-conversation."
+      "alternate worker every turn",
+      "restart worker between turns",
+      "duplicate/out-of-order messages",
+      "cross-region failover mid-session"
     ],
     "watch": [
-      "context-miss rate",
+      "context misses",
       "state reloads",
       "sequence conflicts",
-      "cross-region session moves",
-      "conversation reconstruction latency"
+      "cross-region moves",
+      "reconstruction latency"
     ],
-    "invariant": "Any healthy worker that receives a valid conversation ID can reconstruct the state required to continue correctly.",
-    "closing": "Stickiness can improve locality. It should never be the thing preserving memory."
+    "invariant": "Any healthy worker receiving a valid conversation ID can reconstruct the state needed to continue correctly.",
+    "closing": "Affinity may improve locality. Correctness should not depend on one process staying alive.",
+    "group": "Execution",
+    "tags": [
+      "durable state",
+      "versioning",
+      "replay"
+    ],
+    "first_five": [
+      "Compare routing target across adjacent turns.",
+      "Inspect conversation version/sequence and where state was loaded from.",
+      "Force a durable reload and check for stale/out-of-order writes."
+    ],
+    "flow": [
+      "turn 1",
+      "worker A + memory",
+      "turn 2",
+      "worker B: empty"
+    ],
+    "flow_caption": "Routing moved; the state did not."
   },
   {
     "slug": "credential-rotation",
     "icon": "⌁",
-    "category": "Safety & Identity",
-    "title": "Security rotated the credential. The running agent kept the old one.",
-    "summary": "Credential rotation improves security, but long-lived workers fail if identity is loaded once and treated as permanent.",
+    "category": "Identity",
+    "title": "The credential rotated. The running agent did not.",
+    "summary": "A valid security rotation can break long-lived agents that cache identity once and never refresh it.",
     "symptoms": [
-      "A previously healthy tool suddenly returns authentication failures after a planned rotation.",
-      "Restarting or reloading the worker fixes the issue.",
-      "Only long-running agents fail while newly started workers succeed."
+      "A healthy tool suddenly starts returning auth failures after rotation.",
+      "Restarting the worker fixes the problem.",
+      "New workers succeed while old workers fail."
     ],
-    "failure_boundary": "The external identity changed while the agent process stayed alive. A secret file update is not enough if the running process never refreshes what it already loaded.",
-    "why": "Agents can live much longer than ordinary request handlers. They may cache passwords, tokens or secret-derived clients for hours. Rotation creates two versions of reality: the secret manager has the new credential while the process still holds the old one.",
-    "example": "An overnight data agent authenticates successfully at startup. A scheduled credential rotation happens two hours later. New processes use the updated credential, but the long-running worker keeps reusing the stale client and every API call begins failing.",
+    "failure_boundary": "The secret/identity source has moved to version N+1 while a live process still holds version N.",
+    "why": "Long-running agents can outlive passwords, tokens and client sessions. Updating the secret store does not mutate objects already loaded into a process. Rotation needs a convergence path for live consumers.",
+    "example": "An overnight job authenticates at startup. Credentials rotate two hours later. New workers use the new version, but the existing worker keeps reusing a stale client and every API call begins failing.",
     "fooled": [
-      "Assuming updating a secret store automatically updates process memory.",
-      "Treating all 401/403 responses as permanent authorization denial.",
-      "Embedding credentials in static configuration.",
-      "Restarting the whole platform as the normal rotation strategy."
+      "assuming vault update == process update",
+      "treating every 401/403 as permanent denial",
+      "restart as the normal rotation mechanism"
     ],
     "prevent": [
-      "Prefer short-lived credentials or workload identity where possible.",
-      "Read secrets through a version-aware provider instead of static config.",
+      "Prefer short-lived workload identity/credentials when possible.",
+      "Use a version-aware secret provider, not static startup config.",
       "Refresh before expiry and on classified authentication failure.",
-      "Design client/session recreation without restarting the whole workflow."
+      "Support client/session recreation without restarting the workflow."
     ],
     "detect": [
-      "Expose credential version/lease age without logging the secret.",
-      "Correlate auth failures with rotation events.",
-      "Alert when running workers hold a superseded credential version."
+      "Expose non-secret credential version/lease age.",
+      "Alert on consumers using a superseded version.",
+      "Correlate rotation event → auth error → successful refresh."
     ],
     "recover": [
-      "Invalidate the stale client and fetch the latest credential.",
-      "Retry only after identity refresh and within a bounded policy.",
-      "Checkpoint long-running work so auth recovery does not restart the job from zero."
+      "Invalidate stale client state and fetch current identity.",
+      "Retry only after successful refresh within a bounded policy.",
+      "Checkpoint long-running work so re-auth does not restart from zero."
     ],
     "test": [
-      "Rotate credentials while a long-running task is active.",
-      "Revoke the old credential immediately and verify refresh.",
-      "Simulate secret-manager unavailability during rotation."
+      "rotate during active job",
+      "revoke old credential immediately",
+      "concurrent refresh by many workers",
+      "secret store temporarily unavailable"
     ],
     "watch": [
       "credential age/version",
       "refresh failures",
       "auth errors after rotation",
-      "workers on superseded versions",
-      "workflow resumes after re-auth"
+      "superseded consumers",
+      "re-auth recovery rate"
     ],
-    "invariant": "A running agent must be able to survive authorized identity rotation without manual restart or use of stale authority.",
-    "closing": "Secret rotation is not complete when the vault changes. It is complete when every live consumer converges."
+    "invariant": "Authorized credential rotation must not require manual worker restarts or leave live agents using stale authority.",
+    "closing": "Rotation is complete when live consumers converge, not when the vault changes.",
+    "group": "Identity & Safety",
+    "tags": [
+      "refresh",
+      "short-lived",
+      "versioning"
+    ],
+    "first_five": [
+      "Correlate auth failures with recent rotation events.",
+      "Compare credential-version metadata between failing and fresh workers without logging the secret.",
+      "Invalidate/recreate the client and verify re-auth before retrying work."
+    ],
+    "flow": [
+      "agent process",
+      "cached cred v1",
+      "secret store",
+      "current cred v2"
+    ],
+    "flow_caption": "The vault changed. Process memory did not."
   },
   {
     "slug": "competing-triggers",
     "icon": "⇉",
-    "category": "Tools & Integrations",
+    "category": "Event Ownership",
     "title": "Two valid triggers started processing the same work.",
-    "summary": "A webhook and a poller can both be correct individually and still create duplicate or conflicting execution paths together.",
+    "summary": "A webhook and a poller can each be correct and still create duplicate or conflicting execution together.",
     "symptoms": [
-      "Users receive duplicate actions or replies.",
-      "One consumer makes work disappear before the intended consumer sees it.",
-      "Disabling either trigger makes the problem vanish."
+      "Duplicate replies/actions appear for the same source event.",
+      "One consumer makes the item disappear before another sees it.",
+      "Disabling either path removes the bug."
     ],
-    "failure_boundary": "The failure is ownership. Two independently valid consumers both believe they are responsible for the same external event.",
-    "why": "Teams often add a faster event path without fully retiring the old scheduled path. If both consume the same mailbox, queue, record or status transition, timing decides which workflow wins. Idempotency helps, but the architecture still needs an explicit owner.",
-    "example": "A scheduled poller is designed to process unread requests every few minutes. Later, a real-time webhook is enabled for the same source. The webhook responds first and changes the source state; when the poller runs, the item no longer matches its query—or both paths perform separate side effects.",
+    "failure_boundary": "Ownership is implicit: two consumers independently believe they own the same external event.",
+    "why": "Real-time triggers are often added before scheduled paths are fully retired. If both watch the same mailbox, queue or record transition, timing determines which workflow wins. Idempotency reduces damage, but ownership still needs to be explicit.",
+    "example": "A poller processes unread requests every few minutes. Later a webhook is enabled for the same source. The webhook handles the item first and changes its state; the poller either misses it or performs a second side effect.",
     "fooled": [
-      "Assuming two consumers are safe because both are individually idempotent.",
-      "Using source state such as 'unread' as the only ownership mechanism.",
-      "Renewing obsolete subscriptions automatically.",
-      "Failing to record which trigger claimed an event."
+      "“both consumers are idempotent”",
+      "source state such as unread = ownership",
+      "auto-renewing old subscriptions"
     ],
     "prevent": [
-      "Choose one authoritative ingestion path per event class, or explicitly coordinate multiple paths.",
-      "Assign a stable event ID and durable deduplication record.",
-      "Use leases/fencing or an inbox table when only one consumer may own work.",
-      "Make trigger lifecycle visible and auditable."
+      "Choose one authoritative ingestion path per event class—or coordinate ownership explicitly.",
+      "Use stable event IDs plus a durable inbox/dedupe record.",
+      "Use leases/fencing when only one worker may own the event.",
+      "Inventory webhook, poller and schedule lifecycle centrally."
     ],
     "detect": [
-      "Trace event ID across every trigger and consumer.",
-      "Alert on multiple claims for the same event.",
-      "Inventory active webhooks, pollers and schedules continuously."
+      "Alert on multiple claims for one event ID.",
+      "Trace trigger → claim → side effect end-to-end.",
+      "Continuously inventory active subscriptions and schedules."
     ],
     "recover": [
-      "Disable the unintended path and stop automatic renewal.",
-      "Reconcile external side effects before replaying missed events.",
-      "Backfill from the source of truth with dedupe enabled."
+      "Disable/expire the unintended trigger.",
+      "Reconcile side effects before replay.",
+      "Backfill from source of truth through the dedupe path."
     ],
     "test": [
-      "Fire webhook and poller simultaneously for the same event.",
-      "Delay one consumer so ordering reverses.",
-      "Restart a consumer after claim but before completion."
+      "webhook and poller fire simultaneously",
+      "reverse ordering with delay",
+      "consumer dies after claim",
+      "subscription unexpectedly reappears"
     ],
     "watch": [
-      "duplicate event claims",
-      "active trigger inventory",
+      "duplicate claims",
+      "active triggers",
       "dedupe hits",
       "ownership conflicts",
       "replayed events"
     ],
-    "invariant": "For every external event, the system can identify the single execution owner—or prove that multiple consumers are safe.",
-    "closing": "Two correct pipelines can make one incorrect system when ownership is implicit."
+    "invariant": "Every external event has one identifiable execution owner—or the system can prove multiple consumers are safe.",
+    "closing": "Two correct pipelines can make one incorrect system when ownership is implicit.",
+    "group": "Execution",
+    "tags": [
+      "event ID",
+      "lease",
+      "dedupe"
+    ],
+    "first_five": [
+      "Trace the same event ID across every ingestion path.",
+      "Disable the unintended owner before replaying anything.",
+      "Reconcile already-produced side effects, then backfill with dedupe enabled."
+    ],
+    "flow": [
+      "event",
+      "webhook",
+      "same work",
+      "poller"
+    ],
+    "flow_caption": "Two ingestion paths, one piece of work."
   },
   {
     "slug": "rag-query-explosion",
     "icon": "Σ",
-    "category": "Knowledge & RAG",
-    "title": "One RAG feature flag turned a query into thousands of clauses.",
-    "summary": "Hybrid retrieval and query expansion can exceed engine limits even when the user's question is small.",
+    "category": "RAG & Search",
+    "title": "One RAG flag turned a small question into thousands of clauses.",
+    "summary": "Hybrid retrieval can fail before retrieval begins when rewrites, filters and expansions multiply into an oversized search plan.",
     "symptoms": [
-      "Search fails with a maximum-clause or query-complexity error.",
-      "The failure appears only for certain filters, expansions or feature flags.",
-      "Removing one retrieval mode immediately restores service."
+      "Search fails on a query-complexity/clause limit.",
+      "Only specific tenants, filters or feature flags trigger it.",
+      "A simpler retrieval path immediately works."
     ],
-    "failure_boundary": "The user query is small, but the generated search plan is not. Complexity is created between orchestration and the search engine.",
-    "why": "Hybrid retrieval may combine rewritten queries, metadata filters, synonym expansion, lexical clauses, vector searches and tenant restrictions. Each layer can multiply the final query. Search engines have hard limits, so query shape must be treated as a budgeted resource.",
-    "example": "A retrieval feature enables multiple rewrites and expands metadata conditions for a large entitlement set. The final search request contains several thousand Boolean clauses and the engine rejects it before retrieval begins.",
+    "failure_boundary": "Complexity is created after the user question but before the search engine: query planning becomes the failure point.",
+    "why": "Hybrid search may combine query rewrites, lexical terms, vector searches, metadata filters, entitlements and synonyms. Multiplicative expansion can cross hard engine limits even when the original prompt is tiny.",
+    "example": "A hybrid-retrieval flag enables several rewrites while a large entitlement filter expands into many Boolean terms. The final serialized search request exceeds the engine's complexity ceiling and is rejected before ranking.",
     "fooled": [
-      "Looking only at user-query length.",
-      "Increasing engine limits instead of bounding query construction.",
-      "Enabling hybrid retrieval globally without slice testing.",
-      "Logging the original question but not the final generated search plan."
+      "looking only at user-query length",
+      "raising engine limits without bounding planning",
+      "logging the question but not the generated search request"
     ],
     "prevent": [
-      "Define a query-complexity budget before sending work to the search engine.",
-      "Cap rewrites, filter expansions, synonyms and Boolean clause count.",
-      "Use set-based/lookup filters where supported instead of giant OR lists.",
-      "Provide a simpler retrieval fallback when the planned query exceeds budget."
+      "Enforce a query-complexity budget before dispatch.",
+      "Cap rewrites, synonym expansion, filter cardinality and Boolean clauses.",
+      "Prefer set/lookup filters over giant OR lists where supported.",
+      "Provide a simpler retrieval fallback when the plan exceeds budget."
     ],
     "detect": [
-      "Log clause count, rewrite count, filter cardinality and final serialized query size.",
-      "Slice failures by retrieval mode, tenant and feature flag.",
-      "Alert before hard engine limits are reached."
+      "Log clause count, rewrite count, filter cardinality and payload size.",
+      "Slice failures by feature flag, tenant and retrieval mode.",
+      "Alert before the hard engine limit, not only after rejection."
     ],
     "recover": [
-      "Retry with a bounded fallback query, not the identical oversized request.",
-      "Disable the offending expansion path through a safe feature switch.",
-      "Preserve the failed query plan for debugging and regression tests."
+      "Retry with a bounded fallback query, never the same oversized request.",
+      "Disable the expansion path via a safe feature switch.",
+      "Store the failed query plan as a regression case."
     ],
     "test": [
-      "Large entitlement/filter sets.",
-      "Worst-case synonym and rewrite expansion.",
-      "Hybrid search with maximum metadata cardinality.",
-      "Fallback behavior when the query budget is exceeded."
+      "max entitlement set",
+      "worst-case rewrite/synonym expansion",
+      "hybrid + high-cardinality filters",
+      "query-budget fallback"
     ],
     "watch": [
-      "final clause count",
+      "clause count",
       "filter cardinality",
-      "query-plan size",
-      "search hard-limit errors",
-      "fallback retrieval rate"
+      "query payload size",
+      "hard-limit errors",
+      "fallback rate"
     ],
     "invariant": "No generated retrieval plan reaches the search engine without passing a bounded complexity check.",
-    "closing": "RAG can fail before retrieval. Measure the query you actually send, not only the question the user typed."
+    "closing": "RAG can fail before retrieval. Observe the query you send, not just the question you received.",
+    "group": "Retrieval",
+    "tags": [
+      "query budget",
+      "clause cap",
+      "fallback"
+    ],
+    "first_five": [
+      "Capture the final serialized search plan and clause/filter counts.",
+      "Identify which rewrite/filter stage multiplied complexity.",
+      "Disable or bypass that stage and retry through a bounded fallback."
+    ],
+    "flow": [
+      "1 question",
+      "rewrites × filters",
+      "3000+ clauses",
+      "search rejects"
+    ],
+    "flow_caption": "The input is small. The generated plan is not."
   },
   {
     "slug": "dependency-bottleneck",
     "icon": "DB",
-    "category": "Reliability & Runtime",
-    "title": "The model was fast. A downstream dependency made the AI look slow.",
-    "summary": "Database locks, bad query plans and other dependencies can dominate end-to-end latency while model telemetry stays healthy.",
+    "category": "Dependencies",
+    "title": "The LLM was fast. The AI request was waiting on SQL.",
+    "summary": "Model telemetry can stay green while locks, plans, pools or queues dominate the user's end-to-end latency.",
     "symptoms": [
-      "Model latency remains normal while total request latency climbs.",
-      "Multiple AI features slow down at the same time.",
-      "Killing a blocking database session or changing a query plan restores performance immediately."
+      "Model latency is normal while total request latency climbs.",
+      "Several AI features slow down together.",
+      "Fixing a DB lock/plan/pool restores performance without changing the model."
     ],
-    "failure_boundary": "Users experience one AI request, but the critical path crosses model, retrieval, databases, tools and network dependencies. The slowest layer owns the experience.",
-    "why": "AI observability is often model-centric. That makes it easy to over-investigate tokens, context and provider latency while a conventional dependency is holding locks or running a pathological plan.",
-    "example": "An agent service reads prompt/configuration metadata before every model call. A blocking database session holds a hot table lock. The LLM responds quickly once invoked, but most requests spend their time waiting before inference even starts.",
+    "failure_boundary": "The user sees one AI request, but the critical path crosses ordinary distributed-system dependencies before and after inference.",
+    "why": "AI observability often over-focuses on tokens and provider latency. That makes teams miss classic bottlenecks such as lock contention, connection-pool saturation, bad query plans, queue wait or a slow downstream API.",
+    "example": "An agent reads prompt/config metadata before every model call. A blocking DB session holds a hot table. Inference itself is fast, but most user time is spent waiting before the model is even invoked.",
     "fooled": [
-      "Using model latency as a proxy for user latency.",
-      "Looking at service averages instead of critical-path spans.",
-      "Restarting AI workers when the bottleneck is shared infrastructure.",
-      "Ignoring database plan changes because the application code did not change."
+      "model latency = user latency",
+      "service averages instead of critical-path spans",
+      "restarting AI workers for a shared DB bottleneck"
     ],
     "prevent": [
-      "Instrument end-to-end traces with separate spans for model, retrieval, DB, tools and queue wait.",
-      "Set dependency-specific timeouts and bulkheads.",
-      "Use appropriate indexes and query-plan controls for critical metadata paths.",
-      "Keep expensive administrative/reporting work away from latency-sensitive paths."
+      "Instrument separate spans for queue, DB, retrieval, model and tools.",
+      "Set dependency-specific timeouts/bulkheads and bounded pools.",
+      "Protect latency-sensitive paths from heavy administrative workloads.",
+      "Track and review query-plan/index changes on critical metadata paths."
     ],
     "detect": [
-      "Monitor lock waits, connection-pool saturation, query-plan changes and DB time inside AI traces.",
-      "Compare model-service time with total user latency.",
-      "Alert on dependency contribution, not only total latency."
+      "Compare model time with total request time.",
+      "Monitor lock waits, pool saturation and queue wait inside AI traces.",
+      "Alert on dependency contribution to latency, not only total latency."
     ],
     "recover": [
-      "Remove the blocking workload or force a known-good query plan where appropriate.",
-      "Degrade non-critical reads if safe.",
-      "Drain queued work gradually after the dependency recovers."
+      "Remove blocking work or restore a known-good plan when appropriate.",
+      "Degrade non-critical reads if the product can do so safely.",
+      "Drain queued work gradually after recovery."
     ],
     "test": [
-      "Inject DB latency and lock contention.",
-      "Change a query plan in staging and compare critical-path traces.",
-      "Exhaust the connection pool while inference remains healthy."
+      "inject DB latency",
+      "hold a lock on a hot path",
+      "exhaust connection pool",
+      "change query plan while LLM remains healthy"
     ],
     "watch": [
-      "dependency time share",
-      "DB lock wait",
-      "connection-pool saturation",
-      "query-plan changes",
-      "model-vs-end-to-end latency delta"
+      "DB wait share",
+      "lock wait",
+      "pool saturation",
+      "queue age",
+      "model vs end-to-end delta"
     ],
-    "invariant": "Every user-visible AI latency regression can be decomposed into owned time across the full critical path.",
-    "closing": "An AI system is still a distributed system. Sometimes the least glamorous dependency is the one users are waiting on."
+    "invariant": "Every AI latency regression can be decomposed into owned time across the full critical path.",
+    "closing": "An AI system is still a distributed system; the model is not always what the user is waiting on.",
+    "group": "Dependencies",
+    "tags": [
+      "tracing",
+      "lock waits",
+      "bulkheads"
+    ],
+    "first_five": [
+      "Open one slow trace and account for every millisecond by span.",
+      "Inspect DB lock waits, pool saturation and plan changes before tuning the LLM.",
+      "Contain the blocking workload, then watch backlog drain rate."
+    ],
+    "flow": [
+      "request",
+      "DB wait 4.8s",
+      "LLM 0.7s",
+      "tool 0.3s"
+    ],
+    "flow_caption": "The model is only one span on the critical path."
   },
   {
     "slug": "guardrail-dependency-failure",
     "icon": "⛨",
-    "category": "Safety & Identity",
-    "title": "The safety check failed because one of its own dependencies was down.",
-    "summary": "A guardrail is part of the production dependency graph; its outage policy must be explicit before the dependency fails.",
+    "category": "Safety Runtime",
+    "title": "The safety check failed because its own dependency was down.",
+    "summary": "Guardrails have availability dependencies too. The fail-open/fail-closed/degraded decision must be policy, not incident improvisation.",
     "symptoms": [
-      "Agent requests fail because the policy/guardrail service cannot reach an upstream dependency.",
-      "Teams debate during the incident whether to bypass the safety layer.",
-      "Low-risk and high-risk actions are blocked identically."
+      "Policy/guardrail calls fail because an upstream dependency is unavailable.",
+      "Low-risk reads and high-risk writes are blocked identically.",
+      "Operators consider bypassing the safety layer to restore service."
     ],
-    "failure_boundary": "When the safety decision is unavailable, the runtime still has to choose: fail closed, fail open, or enter a limited degraded mode. That choice is security policy—not an exception handler.",
-    "why": "Guardrails may rely on identity, policy stores, classification services or third-party APIs. If the entire system assumes those dependencies are always available, an upstream outage can either stop the product or tempt operators to bypass controls under pressure.",
-    "example": "A policy check depends on an external identity/data service. That service has a regional outage. Read-only summarization and high-impact write actions now both receive the same 'guardrail unavailable' error even though their risk is very different.",
+    "failure_boundary": "The runtime cannot obtain a safety decision but must still decide what authority, if any, remains.",
+    "why": "Safety services may depend on identity, policy stores, classification models or external APIs. If their outage mode is undefined, the product either stops unnecessarily or people create emergency bypasses under pressure.",
+    "example": "A guardrail relies on an external identity/data service. That dependency fails. Read-only summarization and irreversible write actions now receive the same unavailable result even though their risk is very different.",
     "fooled": [
-      "Treating guardrails as stateless prompt text instead of a service dependency.",
-      "Using one global fail-open/fail-closed decision for every action class.",
-      "Allowing emergency bypasses that are not scoped, logged and time-bounded.",
-      "Testing malicious prompts but never testing guardrail infrastructure failure."
+      "one global fail-open/fail-closed rule",
+      "bypass as an operational shortcut",
+      "testing jailbreaks but not guardrail infrastructure failure"
     ],
     "prevent": [
-      "Define availability policy by action risk: read, propose, reversible write, irreversible write.",
-      "Keep high-impact authorization enforcement in the runtime even when auxiliary classifiers are unavailable.",
-      "Cache only policies that are safe to use with explicit version/expiry semantics.",
-      "Reduce correlated dependencies between the agent and the service that authorizes it."
+      "Define outage policy by action risk: read, propose, reversible write, irreversible write.",
+      "Keep hard authorization enforcement in the runtime.",
+      "Cache only safe policy with explicit version and expiry semantics.",
+      "Minimize correlated dependencies between agent execution and authorization."
     ],
     "detect": [
-      "Separate 'request denied' from 'policy decision unavailable'.",
-      "Trace which upstream dependency prevented the guardrail decision.",
-      "Alert on bypass/degraded-mode activation."
+      "Separate deny-rate from unavailable-rate.",
+      "Trace the exact dependency that prevented the decision.",
+      "Alert on degraded mode, bypass and cached-policy use."
     ],
     "recover": [
-      "Enter a pre-defined degraded mode rather than improvising during the outage.",
-      "Keep risky writes blocked unless an alternate authoritative control exists.",
-      "Revalidate deferred actions after policy service recovery."
+      "Enter pre-defined degraded mode; do not improvise authority.",
+      "Revalidate deferred actions after recovery.",
+      "Automatically expire any emergency override and audit every use."
     ],
     "test": [
-      "Take the guardrail dependency offline during read-only tasks.",
-      "Repeat for reversible and irreversible actions.",
-      "Expire cached policy while the dependency is unavailable.",
-      "Verify emergency override scope, audit and automatic expiry."
+      "identity dependency offline",
+      "policy store offline",
+      "cache expires during outage",
+      "read vs irreversible write",
+      "emergency override auto-expiry"
     ],
     "watch": [
-      "policy-unavailable rate",
+      "policy unavailable",
       "degraded-mode actions",
-      "blocked high-risk actions",
+      "blocked high-risk writes",
       "override usage",
       "cached-policy age"
     ],
     "invariant": "Loss of a safety dependency must never silently grant more authority than the healthy system would allow.",
-    "closing": "The guardrail has a failure mode too. Design that mode before someone asks to bypass it at 2 a.m."
+    "closing": "The guardrail has a failure mode too. Design it before the incident.",
+    "group": "Identity & Safety",
+    "tags": [
+      "risk modes",
+      "fail closed",
+      "policy TTL"
+    ],
+    "first_five": [
+      "Distinguish POLICY_DENIED from POLICY_UNAVAILABLE.",
+      "Apply the pre-defined risk mode for the requested action class.",
+      "Keep high-impact writes blocked unless an alternate authoritative control exists."
+    ],
+    "flow": [
+      "action",
+      "guardrail",
+      "dependency DOWN",
+      "mode?"
+    ],
+    "flow_caption": "Unavailable policy is different from denied policy."
   },
   {
     "slug": "runtime-compatibility-regression",
     "icon": "≠",
-    "category": "Runtime & Change",
-    "title": "The upgrade was 'compatible'—until the agent actually ran.",
-    "summary": "Platform, security or library changes can preserve an API shape while breaking runtime behavior that an agent workflow depends on.",
+    "category": "Change & Regression",
+    "title": "The upgrade was compatible—until the agent actually ran.",
+    "summary": "Schema compatibility can stay green while a platform, library, security or tool-runtime change breaks the workflow's behavior.",
     "symptoms": [
-      "A previously working tool fails only after a platform/security/dependency rollout.",
-      "The schema still validates, but loading or executing the capability fails.",
-      "Only a subset of hosts/pods fail because their runtime state differs."
+      "A tool fails only after a platform/dependency/security rollout.",
+      "Registration/schema validation succeeds but execution fails.",
+      "Only some hosts fail because their runtime fingerprint differs."
     ],
-    "failure_boundary": "Static compatibility answers whether interfaces still look acceptable. Agent behavioral compatibility asks whether the complete workflow still executes correctly under the new runtime.",
-    "why": "Agent systems sit on dynamic layers: Python packages, JVM class loading, sandbox policies, tool allowlists, MCP/tool schemas and provider behavior. A change can be 'valid' locally yet alter imports, serialization, permissions or execution semantics in production.",
-    "example": "A security update narrows the set of allowed function types. Existing agent configuration still parses successfully, but one tool type is no longer executable. In another case, only hosts that received a runtime package patch fail during spreadsheet processing.",
+    "failure_boundary": "Static compatibility validates interfaces. Behavioral compatibility asks whether the same workflow still reaches the same verified state.",
+    "why": "Agent workflows sit on Python/JVM libraries, sandbox policy, tool allowlists, serializers, MCP/API contracts and model behavior. A change can preserve the nominal interface while altering import, permission, execution or final-state semantics.",
+    "example": "A security rollout narrows allowed function types. Existing configuration still parses, but one previously valid tool cannot load. Elsewhere, only hosts with a particular runtime package patch fail the same spreadsheet workflow.",
     "fooled": [
-      "Equating schema compatibility with workflow compatibility.",
-      "Rolling infrastructure or dependency changes everywhere at once.",
-      "Testing tool registration without executing representative workflows.",
-      "Ignoring host-level drift because the application version is identical."
+      "schema compatibility = workflow compatibility",
+      "all-at-once rollout",
+      "health endpoint instead of synthetic execution"
     ],
     "prevent": [
-      "Pin and version runtime dependencies, sandbox policy and tool contracts alongside agent code.",
-      "Maintain a compatibility manifest for model/tool/runtime versions.",
+      "Pin/version runtime dependencies, policy and tool contracts with the agent release.",
+      "Maintain a model/tool/runtime compatibility manifest.",
       "Run state-verified workflow regressions before platform changes.",
-      "Use canary hosts/pods and staged rollout with fast rollback."
+      "Canary hosts/pods with fast rollback and explicit hold points."
     ],
     "detect": [
-      "Compare failures by host, runtime version, policy version and dependency fingerprint.",
-      "Run synthetic tool executions, not only health endpoints.",
-      "Alert on deserialization/import/class-loading/policy-denial regressions after changes."
+      "Compare failure rate by host/runtime/policy version.",
+      "Run synthetic tool executions, not only registration/health checks.",
+      "Alert on import, deserialize, policy-denial and execution regressions after rollout."
     ],
     "recover": [
-      "Rollback the runtime/policy change or migrate the affected tool to a supported contract.",
-      "Restart/recreate only the contaminated runtime when state can be safely reconstructed.",
-      "Capture the failing workflow as a permanent regression case."
+      "Rollback or migrate to a supported contract.",
+      "Recreate contaminated runtime only when state can be reconstructed safely.",
+      "Turn the failing workflow into a permanent regression test."
     ],
     "test": [
-      "Upgrade one dependency while keeping agent code unchanged.",
-      "Change sandbox/tool allowlists.",
-      "Run the same workflow across old/new hosts and compare final state.",
-      "Verify that rollback restores behavior, not just process health."
+      "upgrade one dependency with agent code unchanged",
+      "change sandbox/tool allowlist",
+      "old vs new runtime same workflow",
+      "rollback restores final behavior"
     ],
     "watch": [
-      "failures by runtime fingerprint",
-      "canary-vs-control delta",
-      "tool load/deserialize errors",
-      "policy denials after release",
+      "canary/control delta",
+      "runtime fingerprints",
+      "load/deserialize errors",
+      "policy denials",
       "host-level drift"
     ],
-    "invariant": "A release is compatible only when previously supported agent workflows still reach the expected externally verified state.",
-    "closing": "Software compatibility is necessary. For agents, behavioral compatibility is the production guarantee that matters."
+    "invariant": "A release is compatible only if previously supported workflows still reach the expected externally verified state.",
+    "closing": "Software compatibility is necessary. Behavioral compatibility is the production guarantee.",
+    "group": "Change",
+    "tags": [
+      "canary",
+      "manifest",
+      "state-verified"
+    ],
+    "first_five": [
+      "Group failures by runtime/policy/dependency fingerprint.",
+      "Compare canary/control on the same workflow and external final state.",
+      "Rollback the changed layer first; preserve the failing case before fixing it."
+    ],
+    "flow": [
+      "same agent",
+      "runtime v2",
+      "schema ✓",
+      "workflow ✕"
+    ],
+    "flow_caption": "Compatible shape; incompatible behavior."
   }
 ]
